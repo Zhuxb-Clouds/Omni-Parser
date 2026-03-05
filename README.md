@@ -23,24 +23,24 @@ Input Files → Router (dispatch by extension) → Parser Plugins → Post-proce
 
 ## Tiered Processing Strategy
 
-| Tier | Method | Cost | Use Case |
-|------|--------|------|----------|
-| **Layer 1** | Pure local parsing (python-docx, pandas, pymupdf) | Zero cost | Text-based documents |
-| **Layer 2** | Local OCR (Surya / Tesseract) | Low cost, requires GPU | Scanned PDFs |
-| **Layer 3** | Cloud multimodal AI (Gemini / GPT-4o) | High cost | Image descriptions, complex layouts |
+| Tier        | Method                                            | Cost                   | Use Case                            |
+| ----------- | ------------------------------------------------- | ---------------------- | ----------------------------------- |
+| **Layer 1** | Pure local parsing (python-docx, pandas, pymupdf) | Zero cost              | Text-based documents                |
+| **Layer 2** | Local OCR (Surya / Tesseract)                     | Low cost, requires GPU | Scanned PDFs                        |
+| **Layer 3** | Cloud multimodal AI (Gemini / GPT-4o)             | High cost              | Image descriptions, complex layouts |
 
 ---
 
 ## Supported Formats
 
-| File Type | Parser | Library | Processing Logic |
-|-----------|--------|---------|------------------|
-| **DOCX** | `DocxParser` | `python-docx` | Extracts paragraphs, headings, and tables with hierarchy |
-| **DOC** | `DocParser` | `libreoffice --headless` pre-conversion | Converts to DOCX first, then parses |
-| **XLSX** | `XlsxParser` | `pandas` + `openpyxl` | Converts to Markdown tables, preserves sheet names |
-| **PPTX** | `PptxParser` | `python-pptx` | Extracts titles and body text by slide number |
-| **PDF** | `PdfParser` | `PyMuPDF` → Surya (fallback) | Direct text extraction; auto-fallback to OCR for scanned docs |
-| **Images** | `ImageParser` | Gemini API | Multimodal AI description + OCR |
+| File Type  | Parser        | Library                                 | Processing Logic                                              |
+| ---------- | ------------- | --------------------------------------- | ------------------------------------------------------------- |
+| **DOCX**   | `DocxParser`  | `python-docx`                           | Extracts paragraphs, headings, and tables with hierarchy      |
+| **DOC**    | `DocParser`   | `libreoffice --headless` pre-conversion | Converts to DOCX first, then parses                           |
+| **XLSX**   | `XlsxParser`  | `pandas` + `openpyxl`                   | Converts to Markdown tables, preserves sheet names            |
+| **PPTX**   | `PptxParser`  | `python-pptx`                           | Extracts titles and body text by slide number                 |
+| **PDF**    | `PdfParser`   | `PyMuPDF` → Surya (fallback)            | Direct text extraction; auto-fallback to OCR for scanned docs |
+| **Images** | `ImageParser` | Gemini API                              | Multimodal AI description + OCR                               |
 
 ---
 
@@ -100,50 +100,50 @@ OmniParser converts source files into structured **JSON** and/or **Markdown** fi
 
 #### Top-Level Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `source` | `string` | Relative path of the source file (relative to the input directory) |
-| `file_hash` | `string` | SHA-256 hash of file contents; useful for change detection and deduplication |
-| `success` | `boolean` | Whether parsing succeeded |
-| `error` | `string \| null` | Error message on failure; `null` on success |
-| `documents` | `array` | List of extracted **content blocks** (see below) |
-| `chunks` | `array` | List of **chunks** for RAG retrieval (see below) |
+| Field       | Type             | Description                                                                  |
+| ----------- | ---------------- | ---------------------------------------------------------------------------- |
+| `source`    | `string`         | Relative path of the source file (relative to the input directory)           |
+| `file_hash` | `string`         | SHA-256 hash of file contents; useful for change detection and deduplication |
+| `success`   | `boolean`        | Whether parsing succeeded                                                    |
+| `error`     | `string \| null` | Error message on failure; `null` on success                                  |
+| `documents` | `array`          | List of extracted **content blocks** (see below)                             |
+| `chunks`    | `array`          | List of **chunks** for RAG retrieval (see below)                             |
 
 #### `documents[]` — Content Blocks
 
 Each document represents a logical segment of the source file (paragraph, heading, table, image description, etc.).
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `source` | `string` | **Absolute path** of the source file |
-| `content` | `string` | Extracted content in **Markdown format** |
-| `content_type` | `string` | Block type (see enum values below) |
-| `page` | `int \| null` | Page number (PDF) or slide index (PPTX); may be `null` for other formats |
-| `sheet` | `string \| null` | Excel worksheet name; only present for `.xlsx` files |
-| `metadata` | `object` | Additional metadata (file_hash, author, created, etc.) |
+| Field          | Type             | Description                                                              |
+| -------------- | ---------------- | ------------------------------------------------------------------------ |
+| `source`       | `string`         | **Absolute path** of the source file                                     |
+| `content`      | `string`         | Extracted content in **Markdown format**                                 |
+| `content_type` | `string`         | Block type (see enum values below)                                       |
+| `page`         | `int \| null`    | Page number (PDF) or slide index (PPTX); may be `null` for other formats |
+| `sheet`        | `string \| null` | Excel worksheet name; only present for `.xlsx` files                     |
+| `metadata`     | `object`         | Additional metadata (file_hash, author, created, etc.)                   |
 
 **`content_type` enum values:**
 
-| Value | Meaning |
-|-------|---------|
-| `heading` | Heading / title |
-| `paragraph` | Body paragraph |
-| `table` | Table (Markdown table syntax) |
-| `list` | List |
-| `image` | Image description (generated by multimodal AI) |
-| `code` | Code block |
-| `unknown` | Unrecognized type |
+| Value       | Meaning                                        |
+| ----------- | ---------------------------------------------- |
+| `heading`   | Heading / title                                |
+| `paragraph` | Body paragraph                                 |
+| `table`     | Table (Markdown table syntax)                  |
+| `list`      | List                                           |
+| `image`     | Image description (generated by multimodal AI) |
+| `code`      | Code block                                     |
+| `unknown`   | Unrecognized type                              |
 
 #### `chunks[]` — RAG Chunks
 
 Each chunk is a text fragment produced by the chunking strategy, ready to be fed into a vector database or search engine.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `content` | `string` | Chunked text content |
-| `source` | `string` | Source file path |
-| `chunk_index` | `int` | Chunk sequence number (0-based) |
-| `metadata` | `object` | Additional metadata |
+| Field         | Type     | Description                     |
+| ------------- | -------- | ------------------------------- |
+| `content`     | `string` | Chunked text content            |
+| `source`      | `string` | Source file path                |
+| `chunk_index` | `int`    | Chunk sequence number (0-based) |
+| `metadata`    | `object` | Additional metadata             |
 
 **Chunking strategies (configurable via `config.yaml`):**
 
@@ -161,8 +161,8 @@ A `{filename}.md` file is generated alongside the JSON, containing all `document
 
 The company was founded in...
 
-| Metric | 2023 | 2024 |
-|---|---|---|
+| Metric  | 2023 | 2024 |
+| ------- | ---- | ---- |
 | Revenue | $10B | $12B |
 
 ...
@@ -174,23 +174,23 @@ The company was founded in...
 
 ### Special Cases
 
-| Case | Behavior |
-|------|----------|
-| **Image files** (jpg/png/gif/webp/tiff/bmp) | Described by multimodal AI (e.g. Gemini); `content_type` is `"image"` |
-| **Image-heavy documents** (PDF/DOCX/PPTX with many images, little text) | Pre-scanned; multimodal AI auto-invoked for embedded images |
-| **`.txt` plain text** | Copied verbatim; `metadata` includes `"direct_copy": true` |
-| **Parse failures** | `success: false`, `error` has details, `documents` and `chunks` are `[]` |
+| Case                                                                    | Behavior                                                                 |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| **Image files** (jpg/png/gif/webp/tiff/bmp)                             | Described by multimodal AI (e.g. Gemini); `content_type` is `"image"`    |
+| **Image-heavy documents** (PDF/DOCX/PPTX with many images, little text) | Pre-scanned; multimodal AI auto-invoked for embedded images              |
+| **`.txt` plain text**                                                   | Copied verbatim; `metadata` includes `"direct_copy": true`               |
+| **Parse failures**                                                      | `success: false`, `error` has details, `documents` and `chunks` are `[]` |
 
 ### Downstream Consumption Guide
 
-| Scenario | Recommendation |
-|----------|----------------|
-| **RAG / Vector Search** | Use `chunks[]` directly; each chunk's `content` is a retrieval unit |
-| **Full-Text Analysis** | Iterate `documents[]` and concatenate `content` to reconstruct the full document |
-| **Incremental Updates** | Compare `file_hash` to detect changes and avoid redundant processing |
-| **Quality Filtering** | Check `success` to filter out failed files |
-| **Type-Specific Processing** | Use `content_type` for differentiated handling of tables, images, etc. |
-| **Page Localization** | Use `page` to trace content back to its position in the original document |
+| Scenario                     | Recommendation                                                                   |
+| ---------------------------- | -------------------------------------------------------------------------------- |
+| **RAG / Vector Search**      | Use `chunks[]` directly; each chunk's `content` is a retrieval unit              |
+| **Full-Text Analysis**       | Iterate `documents[]` and concatenate `content` to reconstruct the full document |
+| **Incremental Updates**      | Compare `file_hash` to detect changes and avoid redundant processing             |
+| **Quality Filtering**        | Check `success` to filter out failed files                                       |
+| **Type-Specific Processing** | Use `content_type` for differentiated handling of tables, images, etc.           |
+| **Page Localization**        | Use `page` to trace content back to its position in the original document        |
 
 ---
 
@@ -200,6 +200,7 @@ The company was founded in...
 omniparser/
 ├── __init__.py
 ├── cli.py                  # CLI entry point
+├── mcp_server.py           # MCP Server entry point
 ├── config.py               # Global configuration
 ├── pipeline.py             # Pipeline dispatcher
 ├── models.py               # Data models (Document, Chunk)
@@ -292,3 +293,81 @@ chunking:
 pdf:
   ocr_threshold: 0.3        # Falls back to OCR when text extraction rate is below this value
 ```
+
+---
+
+## MCP Server (Model Context Protocol)
+
+OmniParser can run as an MCP Server, allowing AI clients like Claude Desktop and VS Code Copilot to invoke document parsing capabilities directly.
+
+### Installation
+
+```bash
+pip install -e ".[mcp]"
+```
+
+### Start the Server
+
+```bash
+# Via console script
+omniparser-mcp
+
+# Or run the module directly
+python -m omniparser.mcp_server
+
+# Debug with MCP Inspector
+mcp dev omniparser/mcp_server.py
+```
+
+### Available Tools
+
+| Tool                | Description                                                   |
+| ------------------- | ------------------------------------------------------------- |
+| `parse_file`        | Parse a single file with markdown/json/both output formats    |
+| `parse_directory`   | Batch parse a directory with recursive and file limit support |
+| `supported_formats` | List all supported file extensions                            |
+| `cache_info`        | View cache status                                             |
+| `cache_clear`       | Clear all parsing cache                                       |
+
+### Available Resources
+
+| URI                              | Description                                |
+| -------------------------------- | ------------------------------------------ |
+| `omniparser://cache/list`        | List summaries of all cached parse results |
+| `omniparser://cache/{file_hash}` | Get the full parse result for a given hash |
+
+### Client Configuration
+
+**Claude Desktop** (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "omniparser": {
+      "command": "omniparser-mcp",
+      "env": {
+        "GEMINI_API_KEY": "your-api-key-here"
+      }
+    }
+  }
+}
+```
+
+**VS Code** (`.vscode/settings.json`):
+
+```json
+{
+  "mcp": {
+    "servers": {
+      "omniparser": {
+        "command": "omniparser-mcp",
+        "env": {
+          "GEMINI_API_KEY": "your-api-key-here"
+        }
+      }
+    }
+  }
+}
+```
+
+> 💡 If the project root has a `.env` file with `GEMINI_API_KEY` configured, the MCP Server will load it automatically — no need to repeat it in the client configuration.

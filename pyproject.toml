@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omni-parser"
+version = "0.1.0"
+description = "通用文档解析管道：将任意格式文件统一转换为结构化 Markdown + JSON"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+dependencies = [
+    "python-docx>=1.1.0",
+    "pandas>=2.0.0",
+    "openpyxl>=3.1.0",
+    "python-pptx>=0.6.23",
+    "PyMuPDF>=1.24.0",
+    "PyYAML>=6.0",
+    "olefile>=0.47",
+]
+
+[project.optional-dependencies]
+# 图片解析 - Gemini
+gemini = ["google-generativeai>=0.8.0"]
+# 图片解析 - OpenAI
+openai = ["openai>=1.0.0"]
+# OCR 支持
+ocr = ["pytesseract>=0.3.10", "Pillow>=10.0.0"]
+# Surya OCR (需要 GPU)
+surya = ["surya-ocr>=0.6.0"]
+# 全部可选依赖
+all = [
+    "google-generativeai>=0.8.0",
+    "openai>=1.0.0",
+    "pytesseract>=0.3.10",
+    "Pillow>=10.0.0",
+]
+# 开发依赖
+dev = ["pytest>=8.0", "pytest-cov>=5.0", "ruff>=0.5.0"]
+
+[project.scripts]
+omniparser = "omniparser.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["omniparser*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

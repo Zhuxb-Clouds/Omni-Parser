@@ -1,0 +1,19 @@
+# config.yaml
+cache:
+  enabled: true
+  dir: .omniparser_cache
+
+image:
+  provider: gemini
+  api_key: ${GEMINI_API_KEY}
+  model: gemini-2.5-flash
+  prompt: "请详细描述这张图片的内容。如果是图表，请提取其中的数据；如果是照片，请描述场景和主要物体。最后请以 Markdown 格式输出。"
+
+chunking:
+  strategy: heading
+  max_tokens: 512
+  overlap: 50
+
+pdf:
+  ocr_threshold: 0.3
+  ocr_backend: pytesseract

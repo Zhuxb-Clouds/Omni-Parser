@@ -4,7 +4,7 @@ __version__ = "0.1.0"
 
 from .config import Config
 from .pipeline import Pipeline
-from .models import Document, Chunk, ParseResult, ContentType
+from .models import Document, Chunk, ParseResult, ContentType, CsvConvertResult
 
 __all__ = [
     "Config",
@@ -13,4 +13,5 @@ __all__ = [
     "Chunk",
     "ParseResult",
     "ContentType",
+    "CsvConvertResult",
 ]

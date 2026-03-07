@@ -94,13 +94,21 @@ async def parse_file(
 
     Args:
         file_path: Absolute or relative path to the file
-        format: Output format - "markdown" (default) / "json" / "both"
+        format: Output format - "markdown" (default) / "json" / "both" / "csv" (Excel only, converts each sheet to a separate CSV file)
     """
     path = Path(file_path).resolve()
     if not path.exists():
         return f"❌ File not found: {path}"
     if not path.is_file():
         return f"❌ Path is not a file: {path}"
+
+    # CSV 格式走专用转换路径
+    if format == "csv":
+        if path.suffix.lower() not in {".xlsx", ".xls"}:
+            return f"❌ CSV format is only supported for Excel files (.xlsx / .xls), got: {path.suffix}"
+        pipeline = _get_pipeline()
+        results = await asyncio.to_thread(pipeline.convert_excel_to_csv, path)
+        return _format_csv_results(results)
 
     pipeline = _get_pipeline()
     result = await asyncio.to_thread(pipeline.parse_file, path)
@@ -219,6 +227,43 @@ async def cache_info() -> str:
 
 
 @mcp.tool()
+async def convert_excel_to_csv(
+    file_path: str,
+    output_dir: str = "",
+) -> str:
+    """Convert an Excel file (.xlsx / .xls) to CSV files.
+
+    Each non-empty sheet is exported as a separate CSV file.
+    Naming convention: {filename}_{sheet_name}.csv (or {filename}.csv for single-sheet files).
+    Returns the list of generated CSV files with a content preview.
+
+    Args:
+        file_path: Absolute or relative path to the Excel file
+        output_dir: Directory to save CSV files (default: same directory as the source file)
+    """
+    path = Path(file_path).resolve()
+    if not path.exists():
+        return f"❌ File not found: {path}"
+    if not path.is_file():
+        return f"❌ Path is not a file: {path}"
+    if path.suffix.lower() not in {".xlsx", ".xls"}:
+        return f"❌ Not an Excel file: {path.suffix}. Supported: .xlsx, .xls"
+
+    pipeline = _get_pipeline()
+    out = Path(output_dir).resolve() if output_dir else None
+
+    try:
+        results = await asyncio.to_thread(pipeline.convert_excel_to_csv, path, out)
+    except Exception as e:
+        return f"❌ Conversion failed: {e}"
+
+    if not results:
+        return f"⚠️ No non-empty sheets found in {path.name}"
+
+    return _format_csv_results(results)
+
+
+@mcp.tool()
 async def cache_clear() -> str:
     """Clear all parsing cache."""
     pipeline = _get_pipeline()
@@ -286,6 +331,26 @@ async def get_cached_result(file_hash: str) -> str:
 
 
 # ==================== Helpers ====================
+
+
+def _format_csv_results(results: list) -> str:
+    """Format CSV conversion results into a readable summary."""
+    parts = [f"## Excel → CSV Conversion Results\n"]
+    parts.append(f"Source: `{results[0].source}`")
+    parts.append(f"Sheets converted: {len(results)}\n")
+
+    for r in results:
+        parts.append(f"### 📄 {r.sheet_name}")
+        parts.append(f"- **CSV file**: `{r.csv_path}`")
+        parts.append(f"- **Rows**: {r.rows} | **Columns**: {r.columns}")
+        # Show first 5 lines as preview
+        preview_lines = r.csv_content.strip().split("\n")[:6]
+        preview = "\n".join(preview_lines)
+        if r.rows > 5:
+            preview += f"\n... ({r.rows - 5} more rows)"
+        parts.append(f"\n```csv\n{preview}\n```\n")
+
+    return "\n".join(parts)
 
 
 def _format_result(result: Any, format: str) -> str:

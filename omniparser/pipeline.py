@@ -14,6 +14,8 @@ from .parsers.xlsx_parser import XlsxParser
 from .parsers.pptx_parser import PptxParser
 from .parsers.pdf_parser import PdfParser
 from .parsers.image_parser import ImageParser
+from .parsers.xlsx_csv_converter import XlsxCsvConverter
+from .models import CsvConvertResult
 from .postprocessors.chunker import Chunker
 from .postprocessors.metadata import MetadataExtractor
 from .utils import compute_file_hash, collect_files
@@ -33,6 +35,9 @@ class Pipeline:
         self.cache = FileCache(self.config.cache)
         self.chunker = Chunker(self.config.chunking)
         self.metadata_extractor = MetadataExtractor()
+
+        # Excel → CSV 转换器
+        self._csv_converter = XlsxCsvConverter(self.config)
 
         # 注册解析器 —— 插件式架构，新增格式只需在此注册
         self._parsers: list[BaseParser] = [
@@ -150,3 +155,20 @@ class Pipeline:
         logger.info("Batch complete: %d success, %d failed", success, failed)
 
         return results
+
+    def convert_excel_to_csv(
+        self,
+        file_path: Path,
+        output_dir: Path | None = None,
+    ) -> list[CsvConvertResult]:
+        """将 Excel 文件的每个 Sheet 转换为独立的 CSV 文件
+
+        Args:
+            file_path: Excel 文件路径 (.xlsx / .xls)
+            output_dir: CSV 输出目录，默认为源文件所在目录
+
+        Returns:
+            每个 Sheet 的转换结果列表
+        """
+        file_path = Path(file_path).resolve()
+        return self._csv_converter.convert(file_path, output_dir)

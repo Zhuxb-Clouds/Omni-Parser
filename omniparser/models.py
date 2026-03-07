@@ -59,6 +59,24 @@ class Chunk:
 
 
 @dataclass
+class CsvConvertResult:
+    """Excel 转 CSV 的单个 sheet 转换结果"""
+
+    source: str  # 原始 Excel 文件路径
+    sheet_name: str  # Sheet 名称
+    csv_path: str  # 输出的 CSV 文件路径
+    csv_content: str  # CSV 文本内容
+    rows: int = 0  # 数据行数（不含表头）
+    columns: int = 0  # 列数
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    def to_json(self, **kwargs) -> str:
+        return json.dumps(self.to_dict(), ensure_ascii=False, **kwargs)
+
+
+@dataclass
 class ParseResult:
     """整个文件的解析结果"""
 

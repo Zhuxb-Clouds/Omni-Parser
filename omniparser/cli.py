@@ -76,6 +76,34 @@ def main():
         help="配置文件路径",
     )
 
+    # convert 命令
+    convert_cmd = subparsers.add_parser("convert", help="将 Excel 文件转换为 CSV")
+    convert_cmd.add_argument(
+        "input",
+        type=str,
+        help="输入 Excel 文件路径 (.xlsx / .xls)",
+    )
+    convert_cmd.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default="",
+        help="CSV 输出目录 (默认: 源文件所在目录)",
+    )
+    convert_cmd.add_argument(
+        "-c",
+        "--config",
+        type=str,
+        default="config.yaml",
+        help="配置文件路径 (默认: config.yaml)",
+    )
+    convert_cmd.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="详细日志输出",
+    )
+
     args = parser.parse_args()
 
     if args.command is None:
@@ -93,6 +121,8 @@ def main():
         _handle_parse(args, config, logger)
     elif args.command == "cache":
         _handle_cache(args, config, logger)
+    elif args.command == "convert":
+        _handle_convert(args, config, logger)
 
 
 def _handle_parse(args, config: Config, logger: logging.Logger):
@@ -169,6 +199,41 @@ def _handle_cache(args, config: Config, logger: logging.Logger):
             print(f"总大小: {total_size / 1024:.1f} KB")
         else:
             print("缓存目录不存在")
+
+
+def _handle_convert(args, config: Config, logger: logging.Logger):
+    """处理 convert 命令 —— 将 Excel 转换为 CSV"""
+    input_path = Path(args.input).resolve()
+
+    if not input_path.exists():
+        logger.error("文件不存在: %s", input_path)
+        sys.exit(1)
+
+    if not input_path.is_file():
+        logger.error("路径不是文件: %s", input_path)
+        sys.exit(1)
+
+    output_dir = Path(args.output).resolve() if args.output else None
+
+    pipeline = Pipeline(config)
+
+    try:
+        results = pipeline.convert_excel_to_csv(input_path, output_dir)
+    except (ValueError, FileNotFoundError) as e:
+        logger.error("转换失败: %s", e)
+        sys.exit(1)
+
+    if not results:
+        print("⚠️ 未找到非空的 Sheet")
+        return
+
+    print(f"\n{'='*50}")
+    print(f"Excel → CSV 转换完成")
+    print(f"源文件: {input_path}")
+    print(f"共转换 {len(results)} 个 Sheet:")
+    for r in results:
+        print(f"  📄 {r.sheet_name} → {r.csv_path} ({r.rows} 行, {r.columns} 列)")
+    print(f"{'='*50}")
 
 
 if __name__ == "__main__":

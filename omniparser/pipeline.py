@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 from .cache import FileCache
@@ -133,8 +134,15 @@ class Pipeline:
         self,
         dir_path: Path,
         recursive: bool = False,
+        on_progress: Callable[[ParseResult, int, int], None] | None = None,
     ) -> list[ParseResult]:
-        """批量解析目录下的文件"""
+        """批量解析目录下的文件
+
+        Args:
+            dir_path: 目录路径
+            recursive: 是否递归子目录
+            on_progress: 可选回调，每完成一个文件后调用 (result, current, total)
+        """
         dir_path = Path(dir_path).resolve()
         files = collect_files(
             dir_path,
@@ -142,12 +150,15 @@ class Pipeline:
             extensions=self.supported_extensions,
         )
 
-        logger.info("Found %d files to parse in %s", len(files), dir_path)
+        total = len(files)
+        logger.info("Found %d files to parse in %s", total, dir_path)
 
         results = []
-        for file_path in files:
+        for i, file_path in enumerate(files, 1):
             result = self.parse_file(file_path)
             results.append(result)
+            if on_progress is not None:
+                on_progress(result, i, total)
 
         # 统计
         success = sum(1 for r in results if r.success)

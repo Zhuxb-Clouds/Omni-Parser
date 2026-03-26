@@ -248,6 +248,8 @@ class DocxParser(BaseParser):
         total_text = ""
         image_count = 0
         for element in docx.element.body:
+            if not isinstance(element.tag, str):
+                continue
             tag = element.tag.split("}")[-1]
             if tag == "p":
                 from docx.text.paragraph import Paragraph
@@ -263,10 +265,13 @@ class DocxParser(BaseParser):
             elif tag == "tbl":
                 from docx.table import Table
 
-                tbl = Table(element, docx)
-                for row in tbl.rows:
-                    for cell in row.cells:
-                        total_text += cell.text
+                try:
+                    tbl = Table(element, docx)
+                    for row in tbl.rows:
+                        for cell in row.cells:
+                            total_text += cell.text
+                except Exception as e:
+                    logger.warning("跳过畸形表格 (第一遍扫描): %s", e)
 
         parse_images = should_parse_images(len(total_text.strip()), image_count)
 
@@ -275,6 +280,8 @@ class DocxParser(BaseParser):
         image_slots: list[int] = []
 
         for element in docx.element.body:
+            if not isinstance(element.tag, str):
+                continue
             tag = element.tag.split("}")[-1]
 
             if tag == "p":
@@ -305,9 +312,12 @@ class DocxParser(BaseParser):
                             image_slots.append(len(documents) - 1)
 
             elif tag == "tbl":
-                doc = self._parse_table(element, docx, source)
-                if doc:
-                    documents.append(doc)
+                try:
+                    doc = self._parse_table(element, docx, source)
+                    if doc:
+                        documents.append(doc)
+                except Exception as e:
+                    logger.warning("跳过畸形表格: %s", e)
 
         # --- 合批描述图片 ---
         if image_items:

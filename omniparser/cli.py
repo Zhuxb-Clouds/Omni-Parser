@@ -6,11 +6,22 @@ import argparse
 import json
 import logging
 import sys
+import tempfile
 from pathlib import Path
 
 from .config import Config
 from .pipeline import Pipeline
 from .utils import setup_logging, ensure_dir
+
+
+# ---------- 格式分组（用于 formats 子命令） ----------
+_FORMAT_GROUPS = {
+    "文档": [".docx", ".doc"],
+    "表格": [".xlsx", ".xls", ".csv"],
+    "演示文稿": [".pptx", ".ppt"],
+    "PDF": [".pdf"],
+    "图片": [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".tiff", ".tif"],
+}
 
 
 def main():
@@ -20,19 +31,19 @@ def main():
     )
     subparsers = parser.add_subparsers(dest="command", help="可用命令")
 
-    # parse 命令
+    # ---- parse 命令 ----
     parse_cmd = subparsers.add_parser("parse", help="解析文件或目录")
     parse_cmd.add_argument(
         "input",
         type=str,
-        help="输入文件或目录路径",
+        help="输入文件或目录路径（使用 '-' 从 stdin 读取）",
     )
     parse_cmd.add_argument(
         "-o",
         "--output",
         type=str,
         default="output",
-        help="输出目录 (默认: output/)",
+        help="输出目录（使用 '-' 输出到 stdout，默认: output/）",
     )
     parse_cmd.add_argument(
         "-f",
@@ -60,8 +71,14 @@ def main():
         action="store_true",
         help="详细日志输出",
     )
+    parse_cmd.add_argument(
+        "--ext",
+        type=str,
+        default=None,
+        help="从 stdin 读取时指定文件后缀，如 .pdf、.docx",
+    )
 
-    # cache 命令
+    # ---- cache 命令 ----
     cache_cmd = subparsers.add_parser("cache", help="缓存管理")
     cache_cmd.add_argument(
         "action",
@@ -76,7 +93,7 @@ def main():
         help="配置文件路径",
     )
 
-    # convert 命令
+    # ---- convert 命令 ----
     convert_cmd = subparsers.add_parser("convert", help="将 Excel 文件转换为 CSV")
     convert_cmd.add_argument(
         "input",
@@ -104,13 +121,21 @@ def main():
         help="详细日志输出",
     )
 
+    # ---- formats 命令 ----
+    subparsers.add_parser("formats", help="列出支持的文件格式")
+
     args = parser.parse_args()
 
     if args.command is None:
         parser.print_help()
         sys.exit(1)
 
-    # 配置日志
+    # formats 不需要配置/日志
+    if args.command == "formats":
+        _handle_formats()
+        return
+
+    # 配置日志（输出到 stderr，不污染 stdout 管道）
     setup_logging("DEBUG" if getattr(args, "verbose", False) else "INFO")
     logger = logging.getLogger("omniparser")
 
@@ -125,26 +150,90 @@ def main():
         _handle_convert(args, config, logger)
 
 
+# ================================================================
+#  formats
+# ================================================================
+
+
+def _handle_formats():
+    """列出所有支持的文件格式"""
+    pipeline = Pipeline(Config.default())
+    supported = pipeline.supported_extensions
+
+    print("OmniParser 支持的文件格式:\n")
+    for group, extensions in _FORMAT_GROUPS.items():
+        available = [ext for ext in extensions if ext in supported]
+        if available:
+            print(f"  {group}:  {', '.join(available)}")
+
+    # 显示未归类的扩展名
+    categorized = {ext for exts in _FORMAT_GROUPS.values() for ext in exts}
+    uncategorized = sorted(supported - categorized)
+    if uncategorized:
+        print(f"  其他:  {', '.join(uncategorized)}")
+
+    print(f"\n共 {len(supported)} 种格式")
+
+
+# ================================================================
+#  parse
+# ================================================================
+
+
 def _handle_parse(args, config: Config, logger: logging.Logger):
     """处理 parse 命令"""
-    input_path = Path(args.input).resolve()
-    output_dir = Path(args.output).resolve()
-
-    if not input_path.exists():
-        logger.error("Input path does not exist: %s", input_path)
-        sys.exit(1)
-
-    ensure_dir(output_dir)
+    stdout_mode = args.output == "-"
+    stdin_mode = args.input == "-"
 
     pipeline = Pipeline(config)
 
-    # 解析
-    if input_path.is_file():
-        results = [pipeline.parse_file(input_path)]
-    else:
-        results = pipeline.parse_directory(input_path, recursive=args.recursive)
+    # ---------- stdin 输入 ----------
+    if stdin_mode:
+        ext = args.ext
+        if not ext:
+            logger.error("从 stdin 读取时必须通过 --ext 指定文件后缀，如 --ext .pdf")
+            sys.exit(1)
+        if not ext.startswith("."):
+            ext = f".{ext}"
 
-    # 输出
+        tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+        try:
+            tmp.write(sys.stdin.buffer.read())
+            tmp.close()
+            results = [pipeline.parse_file(Path(tmp.name))]
+        finally:
+            Path(tmp.name).unlink(missing_ok=True)
+
+    # ---------- 常规文件/目录输入 ----------
+    else:
+        input_path = Path(args.input).resolve()
+        if not input_path.exists():
+            logger.error("Input path does not exist: %s", input_path)
+            sys.exit(1)
+
+        if input_path.is_file():
+            results = [pipeline.parse_file(input_path)]
+        else:
+            # 目录模式：带 tqdm 进度条
+            from tqdm import tqdm
+
+            pbar = tqdm(desc="Parsing", unit="file", file=sys.stderr)
+
+            def _on_progress(result, current, total):
+                if pbar.total is None:
+                    pbar.total = total
+                    pbar.refresh()
+                pbar.set_postfix_str(Path(result.source).name, refresh=False)
+                pbar.update(1)
+
+            results = pipeline.parse_directory(
+                input_path,
+                recursive=args.recursive,
+                on_progress=_on_progress,
+            )
+            pbar.close()
+
+    # ---------- 输出 ----------
     success_count = 0
     fail_count = 0
 
@@ -155,29 +244,55 @@ def _handle_parse(args, config: Config, logger: logging.Logger):
             continue
 
         success_count += 1
-        source_name = Path(result.source).stem
 
-        # 输出 JSON
-        if args.format in ("json", "both"):
-            json_path = output_dir / f"{source_name}.json"
-            with open(json_path, "w", encoding="utf-8") as f:
-                json.dump(result.to_dict(), f, ensure_ascii=False, indent=2)
-            logger.info("Written: %s", json_path)
+        if stdout_mode:
+            _write_result_stdout(result, args.format)
+        else:
+            _write_result_file(result, Path(args.output).resolve(), args.format, logger)
 
-        # 输出 Markdown
-        if args.format in ("markdown", "both"):
-            md_path = output_dir / f"{source_name}.md"
-            with open(md_path, "w", encoding="utf-8") as f:
-                for doc in result.documents:
-                    f.write(doc.content)
-                    f.write("\n\n")
-            logger.info("Written: %s", md_path)
+    # 汇总（写到 stderr 以免影响 stdout 管道）
+    summary = f"\n{'='*50}\n" f"解析完成: {success_count} 成功, {fail_count} 失败\n"
+    if not stdout_mode:
+        summary += f"输出目录: {Path(args.output).resolve()}\n"
+    summary += f"{'='*50}"
+    print(summary, file=sys.stderr)
 
-    # 汇总
-    print(f"\n{'='*50}")
-    print(f"解析完成: {success_count} 成功, {fail_count} 失败")
-    print(f"输出目录: {output_dir}")
-    print(f"{'='*50}")
+
+def _write_result_stdout(result, fmt: str):
+    """将解析结果写到 stdout"""
+    if fmt in ("json", "both"):
+        json.dump(result.to_dict(), sys.stdout, ensure_ascii=False, indent=2)
+        sys.stdout.write("\n")
+    if fmt in ("markdown", "both"):
+        for doc in result.documents:
+            sys.stdout.write(doc.content)
+            sys.stdout.write("\n\n")
+    sys.stdout.flush()
+
+
+def _write_result_file(result, output_dir: Path, fmt: str, logger: logging.Logger):
+    """将解析结果写到文件"""
+    ensure_dir(output_dir)
+    source_name = Path(result.source).stem
+
+    if fmt in ("json", "both"):
+        json_path = output_dir / f"{source_name}.json"
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(result.to_dict(), f, ensure_ascii=False, indent=2)
+        logger.info("Written: %s", json_path)
+
+    if fmt in ("markdown", "both"):
+        md_path = output_dir / f"{source_name}.md"
+        with open(md_path, "w", encoding="utf-8") as f:
+            for doc in result.documents:
+                f.write(doc.content)
+                f.write("\n\n")
+        logger.info("Written: %s", md_path)
+
+
+# ================================================================
+#  cache
+# ================================================================
 
 
 def _handle_cache(args, config: Config, logger: logging.Logger):
@@ -199,6 +314,11 @@ def _handle_cache(args, config: Config, logger: logging.Logger):
             print(f"总大小: {total_size / 1024:.1f} KB")
         else:
             print("缓存目录不存在")
+
+
+# ================================================================
+#  convert
+# ================================================================
 
 
 def _handle_convert(args, config: Config, logger: logging.Logger):

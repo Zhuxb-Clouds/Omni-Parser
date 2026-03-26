@@ -18,12 +18,20 @@ def compute_file_hash(path: Path, algorithm: str = "sha256") -> str:
     return f"{algorithm}:{h.hexdigest()}"
 
 
-def setup_logging(level: str = "INFO") -> None:
-    """配置日志"""
+def setup_logging(level: str = "INFO", stream=None) -> None:
+    """配置日志
+
+    Args:
+        level: 日志级别
+        stream: 输出流，默认 stderr
+    """
+    import sys
+
     logging.basicConfig(
         level=getattr(logging, level.upper(), logging.INFO),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
+        stream=stream or sys.stderr,
     )
 
 
